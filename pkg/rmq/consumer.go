@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cenkalti/backoff"
 	"github.com/streadway/amqp"
+	"go.uber.org/zap"
 )
 
 // Consumer is used to read messages from RabbitMQ.
@@ -18,10 +18,10 @@ type Consumer struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	done    chan error
-	errs    chan []byte
+	errs    chan amqp.Delivery
 }
 
-func NewConsumer(addr, queue string, errs chan []byte) *Consumer {
+func NewConsumer(addr, queue string, errs chan amqp.Delivery) *Consumer {
 	return &Consumer{
 		addr:  addr,
 		queue: queue,
@@ -44,15 +44,15 @@ func (c *Consumer) Connect() error {
 	}
 
 	go func() {
-		log.Printf("closing: %s", <-c.conn.NotifyClose(make(chan *amqp.Error)))
+		zap.L().Debug("closing", zap.Error(<-c.conn.NotifyClose(make(chan *amqp.Error))))
 		c.done <- errors.New("channel closed")
 	}()
 
 	_, err = c.channel.QueueDeclare(
 		c.queue,
-		false,
-		false,
 		true,
+		false,
+		false,
 		false,
 		nil,
 	)
@@ -79,7 +79,7 @@ func (c *Consumer) Reconnect(ctx context.Context) (<-chan amqp.Delivery, error) 
 			return nil, nil
 		case <-time.After(d):
 			if err := c.Connect(); err != nil {
-				log.Printf("could not connect in reconnect call: %+v", err)
+				zap.L().Debug("could not connect in reconnect call", zap.Error(err))
 
 				continue
 			}
@@ -93,7 +93,7 @@ func (c *Consumer) Reconnect(ctx context.Context) (<-chan amqp.Delivery, error) 
 				nil,
 			)
 			if err != nil {
-				log.Printf("could not connect: %+v", err)
+				zap.L().Debug("could not connect", zap.Error(err))
 
 				continue
 			}
@@ -113,7 +113,7 @@ func (c *Consumer) Receive(ctx context.Context) error {
 	for {
 		go func(msgs <-chan amqp.Delivery) {
 			for d := range msgs {
-				c.errs <- d.Body
+				c.errs <- d
 			}
 		}(msgs)
 

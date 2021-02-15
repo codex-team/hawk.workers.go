@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/codex-team/hawk.workers.go/internal/workers/golang"
+	"github.com/codex-team/hawk.workers.go/pkg/logger"
 	"github.com/codex-team/hawk.workers.go/pkg/worker"
+	"go.uber.org/zap"
 )
 
 const write_queue = "grouper"
@@ -34,11 +35,13 @@ func main() {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	logger.Create()
+
 	worker := worker.New(rabbit_addr, read_queue, write_queue, golang.Handler)
 	go func() {
 		err := worker.Run(ctx)
 		if err != nil {
-			log.Fatal(err)
+			zap.L().Fatal("worker exited with error", zap.Error(err))
 		}
 	}()
 

@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/cenkalti/backoff"
 	"github.com/streadway/amqp"
+	"go.uber.org/zap"
 )
 
 // Publisher is used to send messages to RabbitMQ.
@@ -44,7 +44,7 @@ func (p *Publisher) Send(data []byte) error {
 		}
 		<-time.After(d)
 		if err := p.Connect(); err != nil {
-			log.Printf("could not reconnect: %+v", err)
+			zap.L().Debug("could not reconnect", zap.Error(err))
 
 			continue
 		}
@@ -59,11 +59,11 @@ func (p *Publisher) Send(data []byte) error {
 				Body:         data,
 			})
 		if err != nil {
-			fmt.Printf("failed to send data: %+v", err)
+			zap.L().Error("failed to send data", zap.Error(err))
 
 			continue
 		}
-		log.Printf("[x] Sent %s", data)
+		zap.L().Debug("sent", zap.String("data", string(data)))
 
 		return nil
 	}
@@ -83,15 +83,15 @@ func (p *Publisher) Connect() error {
 	}
 
 	go func() {
-		log.Printf("closing: %s", <-p.conn.NotifyClose(make(chan *amqp.Error)))
+		zap.L().Debug("closing", zap.Error(<-p.conn.NotifyClose(make(chan *amqp.Error))))
 		p.done <- errors.New("channel closed")
 	}()
 
 	_, err = p.channel.QueueDeclare(
 		p.queue,
-		false,
-		false,
 		true,
+		false,
+		false,
 		false,
 		nil,
 	)
@@ -100,10 +100,10 @@ func (p *Publisher) Connect() error {
 
 // Close stops Publisher.
 func (p *Publisher) Close() error {
-	err := p.channel.Close()
-	if err != nil {
-		return err
-	}
+	//err := p.channel.Close()
+	//if err != nil {
+	//return err
+	//}
 
 	return p.conn.Close()
 }

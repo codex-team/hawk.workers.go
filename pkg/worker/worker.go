@@ -2,10 +2,11 @@ package worker
 
 import (
 	"context"
-	"log"
 
 	"github.com/codex-team/hawk.workers.go/pkg/rmq"
+	"github.com/streadway/amqp"
 	"github.com/valyala/fastjson"
+	"go.uber.org/zap"
 )
 
 // Handler is function that processes events and returns modified data.
@@ -15,13 +16,13 @@ type Handler func(*fastjson.Value) ([]byte, error)
 type Worker struct {
 	pub     *rmq.Publisher
 	con     *rmq.Consumer
-	events  chan []byte
+	events  chan amqp.Delivery
 	parser  fastjson.Parser
 	handler Handler
 }
 
 func New(address, consumerQueue, publisherQueue string, h Handler) *Worker {
-	events := make(chan []byte)
+	events := make(chan amqp.Delivery)
 	return &Worker{
 		pub:     rmq.NewPublisher(address, publisherQueue),
 		con:     rmq.NewConsumer(address, consumerQueue, events),
@@ -38,26 +39,36 @@ func (w *Worker) Run(ctx context.Context) error {
 		errs <- w.con.Receive(ctx)
 	}()
 
+	var data []byte
 	for {
 		select {
-		case data := <-w.events:
+		case d := <-w.events:
+			data = d.Body
 			val, err := w.parser.ParseBytes(data)
 			if err != nil {
-				log.Printf("failed to parse data: %s", err.Error())
+				zap.L().Error("failed to parse data", zap.Error(err))
 				continue
 			}
+
 			res, err := w.handler(val)
 			if err != nil {
-				err = w.pub.Send(res)
-				if err != nil {
-					log.Printf("failed to send data: %s", err.Error())
-				}
-			} else {
-				log.Printf("failed to process data: %s", err.Error())
+				zap.L().Error("failed to process data", zap.Error(err))
+				continue
+			}
+
+			err = w.pub.Send(res)
+			if err != nil {
+				zap.L().Error("failed to send data", zap.Error(err))
+				continue
+			}
+
+			err = d.Ack(false)
+			if err != nil {
+				zap.L().Error("failed to ack message", zap.Error(err))
 			}
 		case err := <-errs:
 			if err != nil {
-				log.Printf("worker disconnected with error: %s", err.Error())
+				zap.L().Error("worker disconnected with error", zap.Error(err))
 			}
 			return w.Stop()
 		case <-ctx.Done():
@@ -70,7 +81,7 @@ func (w *Worker) Run(ctx context.Context) error {
 func (w *Worker) Stop() error {
 	err := w.pub.Close()
 	if err != nil {
-		log.Printf("publisher exited with error: %s", err.Error())
+		zap.L().Error("publisher exited with error", zap.Error(err))
 	}
 	return w.con.Close()
 }
