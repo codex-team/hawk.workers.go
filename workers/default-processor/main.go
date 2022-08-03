@@ -4,7 +4,8 @@ import "github.com/codex-team/hawk.workers.go/lib/worker"
 
 func main() {
 	rabbitmqUrl := "amqp://rabbitmq"
-	workerInstance := worker.New(rabbitmqUrl, Handler)
+	queue := "hello"
+	workerInstance := worker.New(rabbitmqUrl, queue, Handler, nil)
 
-	workerInstance.Run()
+	<-workerInstance.Run()
 }
