@@ -1,10 +1,10 @@
-package worker_default
+package main
 
-import "github.com/codex-team/hawk.workers.go/lib"
+import "github.com/codex-team/hawk.workers.go/lib/worker"
 
 func main() {
 	rabbitmqUrl := "amqp://rabbitmq"
-	worker := lib.NewWorker(rabbitmqUrl, Handler)
+	workerInstance := worker.New(rabbitmqUrl, Handler)
 
-	worker.Run()
+	workerInstance.Run()
 }
