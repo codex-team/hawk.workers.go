@@ -10,8 +10,8 @@ import (
 type Worker struct {
 	rabbitmqURL string      // URL for RabbitMQ connection
 	handler     TaskHandler // Task handler function. Worker will call this function when it receives a task
-	queue_name  string
-	logger      *log.Logger
+	queueName   string      // Name of the queue to be subscribed to
+	logger      *log.Logger // Logger to write to
 }
 
 // HandlerContext will be passed to the handler function on every call
@@ -28,10 +28,10 @@ type Task struct {
 // TaskHandler represents Worker handler for processing tasks
 type TaskHandler func(ctx HandlerContext) error
 
+// Helper function for handling fatal errors
 func (w *Worker) fatalOnFail(err error, msg string) {
 	if err != nil {
 		w.logger.Fatalf("%s: %s\n", msg, err.Error())
-		return
 	}
 }
 
@@ -41,29 +41,18 @@ func (w *Worker) Run() <-chan struct{} {
 	w.fatalOnFail(err, "Failed to connect to RabbitMQ")
 
 	defer conn.Close()
-
 	ch, err := conn.Channel()
 	w.fatalOnFail(err, "Failed to get channel to RabbitMQ")
 	defer ch.Close()
 
-	q, err := ch.QueueDeclare(
-		w.queue_name, // name
-		false,        // durable
-		false,        // delete when unused
-		false,        // exclusive
-		false,        // no-wait
-		nil,          // arguments
-	)
-	w.fatalOnFail(err, "Failed to declare a queue")
-
 	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+		w.queueName, // queue
+		"",          // consumer
+		true,        // auto-ack
+		false,       // exclusive
+		false,       // no-local
+		false,       // no-wait
+		nil,         // args
 	)
 
 	var forever chan struct{}
@@ -71,7 +60,7 @@ func (w *Worker) Run() <-chan struct{} {
 	w.logger.Println("Worker starting...")
 	go func() {
 		for d := range msgs {
-			w.logger.Printf("Received message: %s", d.Body)
+			w.logger.Printf("Received message: %s", d.Body)                                      // TODO move under debug level
 			w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {}}) // TODO make proper SendTask logic
 		}
 	}()
@@ -91,6 +80,6 @@ func New(rabbitmqURL string, queue_name string, handler TaskHandler, logger *log
 				return log.Default()
 			}
 		}(),
-		queue_name: queue_name,
+		queueName: queue_name,
 	}
 }
