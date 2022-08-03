@@ -69,7 +69,7 @@ func (w *Worker) Run() <-chan struct{} {
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queue_name string, handler TaskHandler, logger *log.Logger) *Worker {
+func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *log.Logger) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
@@ -80,6 +80,6 @@ func New(rabbitmqURL string, queue_name string, handler TaskHandler, logger *log
 				return log.Default()
 			}
 		}(),
-		queueName: queue_name,
+		queueName: queueName,
 	}
 }
