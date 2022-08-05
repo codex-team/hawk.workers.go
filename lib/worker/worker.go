@@ -40,15 +40,15 @@ func (w *Worker) Run() <-chan struct{} {
 	conn, err := amqp.Dial(w.rabbitmqURL)
 	w.fatalOnFail(err, "Failed to connect to RabbitMQ")
 
-	defer conn.Close()
+	//defer conn.Close()
 	ch, err := conn.Channel()
 	w.fatalOnFail(err, "Failed to get channel to RabbitMQ")
-	defer ch.Close()
+	//defer ch.Close()
 
 	msgs, err := ch.Consume(
 		w.queueName, // queue
 		"",          // consumer
-		true,        // auto-ack
+		false,       // auto-ack
 		false,       // exclusive
 		false,       // no-local
 		false,       // no-wait
@@ -60,8 +60,13 @@ func (w *Worker) Run() <-chan struct{} {
 	w.logger.Println("Worker starting...")
 	go func() {
 		for d := range msgs {
-			w.logger.Printf("Received message: %s", d.Body)                                      // TODO move under debug level
-			w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {}}) // TODO make proper SendTask logic
+			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
+			w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {
+				err := d.Ack(true)
+				if err != nil {
+					w.logger.Println(err.Error())
+				}
+			}}) // TODO make proper SendTask logic
 		}
 	}()
 
