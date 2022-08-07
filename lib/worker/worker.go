@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 )
@@ -11,6 +12,7 @@ type Worker struct {
 	rabbitmqURL string      // URL for RabbitMQ connection
 	handler     TaskHandler // Task handler function. Worker will call this function when it receives a task
 	queueName   string      // Name of the queue to be subscribed to
+	targetQueue string      // Name of the queue to resend to
 	logger      *log.Logger // Logger to write to
 }
 
@@ -45,7 +47,7 @@ func (w *Worker) Run() <-chan struct{} {
 	w.fatalOnFail(err, "Failed to get channel to RabbitMQ")
 	//defer ch.Close()
 
-	msgs, err := ch.Consume(
+	receiving, err := ch.Consume(
 		w.queueName, // queue
 		"",          // consumer
 		false,       // auto-ack
@@ -59,14 +61,39 @@ func (w *Worker) Run() <-chan struct{} {
 
 	w.logger.Println("Worker starting...")
 	go func() {
-		for d := range msgs {
+		for d := range receiving {
 			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
-			w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {
-				err := d.Ack(true)
+			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {
+				err := d.Ack(false)
 				if err != nil {
-					w.logger.Println(err.Error())
+					w.logger.Printf("Failed to send ACK: %s", err.Error())
+					return
 				}
-			}}) // TODO make proper SendTask logic
+
+				err = ch.PublishWithContext(
+					context.TODO(),
+					"",
+					w.targetQueue,
+					false,
+					false,
+					amqp.Publishing{
+						ContentType: "application/json",
+						Body:        []byte(task.Payload),
+					})
+				if err != nil {
+					w.logger.Printf("Failed to send to another queue: %s", err.Error())
+					return
+				}
+			}})
+
+			if err != nil {
+				w.logger.Printf("Error on processing the task: %s", err.Error())
+				err = d.Reject(false) // TODO think about this behavior
+				if err != nil {
+					w.logger.Printf("Failed to reject: %s", err.Error())
+				}
+				continue
+			}
 		}
 	}()
 
@@ -74,7 +101,7 @@ func (w *Worker) Run() <-chan struct{} {
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *log.Logger) *Worker {
+func New(rabbitmqURL string, queueName string, targetQueue string, handler TaskHandler, logger *log.Logger) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
@@ -85,6 +112,7 @@ func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *log.
 				return log.Default()
 			}
 		}(),
-		queueName: queueName,
+		queueName:   queueName,
+		targetQueue: targetQueue,
 	}
 }
