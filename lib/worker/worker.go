@@ -17,8 +17,8 @@ type Worker struct {
 
 // HandlerContext will be passed to the handler function on every call
 type HandlerContext struct {
-	Task     Task                                     // Task for processing
-	SendTask func(task *Task, queueName string) error // Function for sending task to another worker
+	Task    Task          // Task for processing
+	channel *amqp.Channel // Channel to which it is connected to
 }
 
 // Task represents a task for processing
@@ -36,30 +36,26 @@ func (w *Worker) fatalOnFail(err error, msg string) {
 	}
 }
 
-func createHandlerContext(payload string, channel *amqp.Channel) HandlerContext {
-	return HandlerContext{
-		Task: Task{payload},
-		SendTask: func(task *Task, queueName string) error {
-			if len(queueName) == 0 {
-				return nil // considered as is not intended to be resent
-			}
-			err := channel.PublishWithContext(
-				context.TODO(),
-				"",
-				queueName,
-				false,
-				false,
-				amqp.Publishing{
-					ContentType: "application/json",
-					Body:        []byte(task.Payload),
-				})
+func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
+	if len(queueName) == 0 {
+		return nil // considered as is not intended to be resent
+	}
+	err := ctx.channel.PublishWithContext(
+		context.TODO(),
+		"",
+		queueName,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        []byte(task.Payload),
+		})
 
-			if err != nil {
-				log.Printf("Failed to send to another queue: %s", err.Error())
-				return err
-			}
-			return nil
-		}}
+	if err != nil {
+		log.Printf("Failed to send to another queue: %s", err.Error())
+		return err
+	}
+	return nil
 }
 
 // Run function starts the worker
@@ -88,7 +84,7 @@ func (w *Worker) Run() <-chan struct{} {
 	go func() {
 		for d := range receiving {
 			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
-			err := w.handler(createHandlerContext(string(d.Body), ch))
+			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, channel: ch})
 			if err != nil {
 				w.logger.Printf("Error on processing the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
