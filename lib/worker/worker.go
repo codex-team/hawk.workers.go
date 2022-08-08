@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 )
@@ -16,9 +17,8 @@ type Worker struct {
 
 // HandlerContext will be passed to the handler function on every call
 type HandlerContext struct {
-	Task     Task             // Task for processing
-	SendTask func(task *Task) // Function for sending task to another worker
-	Channel  *amqp.Channel    // Channel, from which the Task came from
+	Task     Task                                     // Task for processing
+	SendTask func(task *Task, queueName string) error // Function for sending task to another worker
 }
 
 // Task represents a task for processing
@@ -34,6 +34,32 @@ func (w *Worker) fatalOnFail(err error, msg string) {
 	if err != nil {
 		w.logger.Fatalf("%s: %s\n", msg, err.Error())
 	}
+}
+
+func createHandlerContext(payload string, channel *amqp.Channel) HandlerContext {
+	return HandlerContext{
+		Task: Task{payload},
+		SendTask: func(task *Task, queueName string) error {
+			if len(queueName) == 0 {
+				return nil // considered as is not intended to be resent
+			}
+			err := channel.PublishWithContext(
+				context.TODO(),
+				"",
+				queueName,
+				false,
+				false,
+				amqp.Publishing{
+					ContentType: "application/json",
+					Body:        []byte(task.Payload),
+				})
+
+			if err != nil {
+				log.Printf("Failed to send to another queue: %s", err.Error())
+				return err
+			}
+			return nil
+		}}
 }
 
 // Run function starts the worker
@@ -62,14 +88,7 @@ func (w *Worker) Run() <-chan struct{} {
 	go func() {
 		for d := range receiving {
 			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
-			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, Channel: ch, SendTask: func(task *Task) {
-				err := d.Ack(false)
-				if err != nil {
-					w.logger.Printf("Failed to send ACK: %s", err.Error())
-					return
-				}
-			}})
-
+			err := w.handler(createHandlerContext(string(d.Body), ch))
 			if err != nil {
 				w.logger.Printf("Error on processing the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
@@ -77,6 +96,11 @@ func (w *Worker) Run() <-chan struct{} {
 					w.logger.Printf("Failed to reject: %s", err.Error())
 				}
 				continue
+			}
+			err = d.Ack(false)
+			if err != nil {
+				w.logger.Printf("Failed to send ACK: %s", err.Error())
+				return
 			}
 		}
 	}()
