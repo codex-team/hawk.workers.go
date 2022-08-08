@@ -2,7 +2,6 @@
 package worker
 
 import (
-	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 )
@@ -12,7 +11,6 @@ type Worker struct {
 	rabbitmqURL string      // URL for RabbitMQ connection
 	handler     TaskHandler // Task handler function. Worker will call this function when it receives a task
 	queueName   string      // Name of the queue to be subscribed to
-	targetQueue string      // Name of the queue to resend to
 	logger      *log.Logger // Logger to write to
 }
 
@@ -20,6 +18,7 @@ type Worker struct {
 type HandlerContext struct {
 	Task     Task             // Task for processing
 	SendTask func(task *Task) // Function for sending task to another worker
+	Channel  *amqp.Channel    // Channel, from which the Task came from
 }
 
 // Task represents a task for processing
@@ -63,25 +62,10 @@ func (w *Worker) Run() <-chan struct{} {
 	go func() {
 		for d := range receiving {
 			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
-			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {
+			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, Channel: ch, SendTask: func(task *Task) {
 				err := d.Ack(false)
 				if err != nil {
 					w.logger.Printf("Failed to send ACK: %s", err.Error())
-					return
-				}
-
-				err = ch.PublishWithContext(
-					context.TODO(),
-					"",
-					w.targetQueue,
-					false,
-					false,
-					amqp.Publishing{
-						ContentType: "application/json",
-						Body:        []byte(task.Payload),
-					})
-				if err != nil {
-					w.logger.Printf("Failed to send to another queue: %s", err.Error())
 					return
 				}
 			}})
@@ -101,7 +85,7 @@ func (w *Worker) Run() <-chan struct{} {
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queueName string, targetQueue string, handler TaskHandler, logger *log.Logger) *Worker {
+func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *log.Logger) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
@@ -112,7 +96,6 @@ func New(rabbitmqURL string, queueName string, targetQueue string, handler TaskH
 				return log.Default()
 			}
 		}(),
-		queueName:   queueName,
-		targetQueue: targetQueue,
+		queueName: queueName,
 	}
 }

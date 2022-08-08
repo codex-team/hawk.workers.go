@@ -1,10 +1,20 @@
 package main
 
-import "github.com/codex-team/hawk.workers.go/lib/worker"
-import "encoding/json"
-import "log"
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"github.com/codex-team/hawk.workers.go/lib/worker"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"log"
+)
+
+const targetQueue = "grouper"
 
 func Handler(ctx worker.HandlerContext) error {
+	if ctx.Channel == nil {
+		return errors.New("ctx.Channel is nil")
+	}
 	var payload worker.Event
 	err := json.Unmarshal([]byte(ctx.Task.Payload), &payload)
 	if err != nil {
@@ -13,6 +23,21 @@ func Handler(ctx worker.HandlerContext) error {
 	}
 	log.Printf("Resending the task")
 
-	go ctx.SendTask(&ctx.Task)
+	err = ctx.Channel.PublishWithContext(
+		context.TODO(),
+		"",
+		targetQueue,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        []byte(ctx.Task.Payload),
+		})
+
+	if err != nil {
+		log.Printf("Failed to send to another queue: %s", err.Error())
+		return err
+	}
+	ctx.SendTask(&ctx.Task)
 	return nil
 }

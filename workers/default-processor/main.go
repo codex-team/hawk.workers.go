@@ -15,8 +15,7 @@ func getEnv(key, fallback string) string {
 func main() {
 	rabbitmqUrl := getEnv("REGISTRY_URL", "amqp://127.0.0.1:5672")
 	queue := "errors/default"
-	target := "grouper"
-	workerInstance := worker.New(rabbitmqUrl, queue, target, Handler, nil)
+	workerInstance := worker.New(rabbitmqUrl, queue, Handler, nil)
 
 	<-workerInstance.Run()
 }
