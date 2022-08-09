@@ -2,22 +2,25 @@
 package worker
 
 import (
+	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"log"
 )
 
 // Worker represents worker data for handling tasks
 type Worker struct {
-	rabbitmqURL string      // URL for RabbitMQ connection
-	handler     TaskHandler // Task handler function. Worker will call this function when it receives a task
-	queueName   string      // Name of the queue to be subscribed to
-	logger      *log.Logger // Logger to write to
+	rabbitmqURL string           // URL for RabbitMQ connection
+	handler     TaskHandler      // Task handler function. Worker will call this function when it receives a task
+	queueName   string           // Name of the queue to be subscribed to
+	logger      *log.Logger      // Logger to write to
+	connection  *amqp.Connection // Connection to the RabbitMQ
+	channel     *amqp.Channel    // Channel to the RabbitMQ
 }
 
 // HandlerContext will be passed to the handler function on every call
 type HandlerContext struct {
-	Task     Task             // Task for processing
-	SendTask func(task *Task) // Function for sending task to another worker
+	Task    Task          // Task for processing
+	channel *amqp.Channel // Channel to which it is connected to
 }
 
 // Task represents a task for processing
@@ -35,20 +38,42 @@ func (w *Worker) fatalOnFail(err error, msg string) {
 	}
 }
 
+// SendTask sends task to another queue, empty string is considered as no-op and nothing will be sent
+func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
+	if len(queueName) == 0 {
+		return nil // considered as is not intended to be resent
+	}
+	err := ctx.channel.PublishWithContext(
+		context.TODO(),
+		"",
+		queueName,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "application/json",
+			Body:        []byte(task.Payload),
+		})
+
+	if err != nil {
+		log.Printf("Failed to send to another queue: %s", err.Error())
+		return err
+	}
+	return nil
+}
+
 // Run function starts the worker
 func (w *Worker) Run() <-chan struct{} {
-	conn, err := amqp.Dial(w.rabbitmqURL)
+	var err error
+	w.connection, err = amqp.Dial(w.rabbitmqURL)
 	w.fatalOnFail(err, "Failed to connect to RabbitMQ")
 
-	defer conn.Close()
-	ch, err := conn.Channel()
+	w.channel, err = w.connection.Channel()
 	w.fatalOnFail(err, "Failed to get channel to RabbitMQ")
-	defer ch.Close()
 
-	msgs, err := ch.Consume(
+	receiving, err := w.channel.Consume(
 		w.queueName, // queue
 		"",          // consumer
-		true,        // auto-ack
+		false,       // auto-ack
 		false,       // exclusive
 		false,       // no-local
 		false,       // no-wait
@@ -59,13 +84,42 @@ func (w *Worker) Run() <-chan struct{} {
 
 	w.logger.Println("Worker starting...")
 	go func() {
-		for d := range msgs {
-			w.logger.Printf("Received message: %s", d.Body)                                      // TODO move under debug level
-			w.handler(HandlerContext{Task: Task{string(d.Body)}, SendTask: func(task *Task) {}}) // TODO make proper SendTask logic
+		for d := range receiving {
+			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
+			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, channel: w.channel})
+			if err != nil {
+				w.logger.Printf("Error on processing the task: %s", err.Error())
+				err = d.Reject(false) // TODO think about this behavior
+				if err != nil {
+					w.logger.Printf("Failed to reject: %s", err.Error())
+				}
+				continue
+			}
+			err = d.Ack(false)
+			if err != nil {
+				w.logger.Printf("Failed to send ACK: %s", err.Error())
+				return
+			}
 		}
 	}()
 
 	return forever
+}
+
+// Stop the active connections
+func (w *Worker) Stop() {
+	if w.channel != nil {
+		err := w.channel.Close()
+		if err != nil {
+			w.logger.Printf("Failed to close the channel: %s", err.Error())
+		}
+	}
+	if w.connection != nil {
+		err := w.connection.Close()
+		if err != nil {
+			w.logger.Printf("Failed to close the connection: %s", err.Error())
+		}
+	}
 }
 
 // New function creates new worker instance
