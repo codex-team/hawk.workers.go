@@ -16,6 +16,6 @@ func main() {
 	rabbitmqUrl := getEnv("REGISTRY_URL", "amqp://127.0.0.1:5672")
 	queue := "errors/default"
 	workerInstance := worker.New(rabbitmqUrl, queue, Handler, nil)
-
+	defer workerInstance.Stop() // TODO gracefully close connections on exit
 	<-workerInstance.Run()
 }

@@ -9,10 +9,12 @@ import (
 
 // Worker represents worker data for handling tasks
 type Worker struct {
-	rabbitmqURL string      // URL for RabbitMQ connection
-	handler     TaskHandler // Task handler function. Worker will call this function when it receives a task
-	queueName   string      // Name of the queue to be subscribed to
-	logger      *log.Logger // Logger to write to
+	rabbitmqURL string           // URL for RabbitMQ connection
+	handler     TaskHandler      // Task handler function. Worker will call this function when it receives a task
+	queueName   string           // Name of the queue to be subscribed to
+	logger      *log.Logger      // Logger to write to
+	connection  *amqp.Connection // Connection to the RabbitMQ
+	channel     *amqp.Channel    // Channel to the RabbitMQ
 }
 
 // HandlerContext will be passed to the handler function on every call
@@ -60,15 +62,14 @@ func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
 
 // Run function starts the worker
 func (w *Worker) Run() <-chan struct{} {
-	conn, err := amqp.Dial(w.rabbitmqURL)
+	var err error
+	w.connection, err = amqp.Dial(w.rabbitmqURL)
 	w.fatalOnFail(err, "Failed to connect to RabbitMQ")
 
-	//defer conn.Close()
-	ch, err := conn.Channel()
+	w.channel, err = w.connection.Channel()
 	w.fatalOnFail(err, "Failed to get channel to RabbitMQ")
-	//defer ch.Close()
 
-	receiving, err := ch.Consume(
+	receiving, err := w.channel.Consume(
 		w.queueName, // queue
 		"",          // consumer
 		false,       // auto-ack
@@ -84,7 +85,7 @@ func (w *Worker) Run() <-chan struct{} {
 	go func() {
 		for d := range receiving {
 			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
-			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, channel: ch})
+			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, channel: w.channel})
 			if err != nil {
 				w.logger.Printf("Error on processing the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
@@ -102,6 +103,22 @@ func (w *Worker) Run() <-chan struct{} {
 	}()
 
 	return forever
+}
+
+func (w *Worker) Stop() {
+	w.logger.Printf("STOP!!!")
+	if w.channel != nil {
+		err := w.channel.Close()
+		if err != nil {
+			w.logger.Printf("Failed to close the channel: %s", err.Error())
+		}
+	}
+	if w.connection != nil {
+		err := w.connection.Close()
+		if err != nil {
+			w.logger.Printf("Failed to close the connection: %s", err.Error())
+		}
+	}
 }
 
 // New function creates new worker instance
