@@ -38,6 +38,7 @@ func (w *Worker) fatalOnFail(err error, msg string) {
 	}
 }
 
+// SendTask sends task to another queue, empty string is considered as no-op and nothing will be sent
 func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
 	if len(queueName) == 0 {
 		return nil // considered as is not intended to be resent
@@ -105,8 +106,8 @@ func (w *Worker) Run() <-chan struct{} {
 	return forever
 }
 
+// Stop the active connections
 func (w *Worker) Stop() {
-	w.logger.Printf("STOP!!!")
 	if w.channel != nil {
 		err := w.channel.Close()
 		if err != nil {
