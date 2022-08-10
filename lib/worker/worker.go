@@ -126,22 +126,16 @@ func (w *Worker) Stop() {
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *zap.SugaredLogger) *Worker {
-	var logs *zap.SugaredLogger
-	if logger != nil {
-		logs = logger
-	} else {
-		bufferLogger, _ := zap.NewDevelopment()
-		logs = bufferLogger.Sugar()
-	}
+func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
-		logger:      logs,
+		logger:      CreateDefaultLogger(zapcore.InfoLevel), // TODO read from config
 		queueName:   queueName,
 	}
 }
 
+// CreateDefaultLogger creates default logger with a certain log level
 func CreateDefaultLogger(level zapcore.Level) *zap.SugaredLogger {
 	cfg := zap.Config{
 		Encoding:         "console",
