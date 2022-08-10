@@ -5,6 +5,7 @@ import (
 	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Worker represents worker data for handling tasks
@@ -139,4 +140,34 @@ func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *zap.
 		logger:      logs,
 		queueName:   queueName,
 	}
+}
+
+func CreateDefaultLogger(level zapcore.Level) *zap.SugaredLogger {
+	cfg := zap.Config{
+		Encoding:         "console",
+		Development:      true,
+		Level:            zap.NewAtomicLevelAt(level),
+		OutputPaths:      []string{"stdout"},
+		ErrorOutputPaths: []string{"stderr"},
+		EncoderConfig: zapcore.EncoderConfig{
+			MessageKey:          "message",
+			LevelKey:            "level",
+			TimeKey:             "name",
+			NameKey:             "ts",
+			CallerKey:           "caller",
+			FunctionKey:         "func",
+			StacktraceKey:       "stacktrace",
+			SkipLineEnding:      false,
+			LineEnding:          "\n",
+			EncodeLevel:         zapcore.CapitalColorLevelEncoder,
+			EncodeTime:          zapcore.ISO8601TimeEncoder,
+			EncodeDuration:      zapcore.MillisDurationEncoder,
+			EncodeCaller:        zapcore.FullCallerEncoder,
+			EncodeName:          zapcore.FullNameEncoder,
+			NewReflectedEncoder: nil,
+			ConsoleSeparator:    "\t",
+		},
+	}
+	logger, _ := cfg.Build()
+	return logger.Sugar()
 }
