@@ -27,7 +27,7 @@ type HandlerContext struct {
 
 // Task represents a task for processing
 type Task struct {
-	Payload string // Data for processing
+	Payload *string // Data for processing
 }
 
 // TaskHandler represents Worker handler for processing tasks
@@ -53,11 +53,11 @@ func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
 		false,
 		amqp.Publishing{
 			ContentType: "application/json",
-			Body:        []byte(task.Payload),
+			Body:        []byte(*task.Payload),
 		})
 
 	if err != nil {
-		ctx.Logger.Errorf("Failed to send to another queue: %s", err.Error())
+		ctx.Logger.Errorf("Failed to send to queue `%s`: %s", queueName, err.Error())
 		return err
 	}
 	return nil
@@ -88,10 +88,11 @@ func (w *Worker) Run() <-chan struct{} {
 	go func() {
 		for d := range receiving {
 			w.logger.Info("Received message")
-			w.logger.Debug(string(d.Body))
-			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, channel: w.channel, Logger: w.logger})
+			body := string(d.Body)
+			w.logger.Debug(body)
+			err := w.handler(HandlerContext{Task: Task{&body}, channel: w.channel, Logger: w.logger})
 			if err != nil {
-				w.logger.Infof("Error on processing the task: %s", err.Error())
+				w.logger.Warnf("Failed to process the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
 				if err != nil {
 					w.logger.Errorf("Failed to reject: %s", err.Error())
