@@ -4,28 +4,30 @@ package worker
 import (
 	"context"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"log"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Worker represents worker data for handling tasks
 type Worker struct {
-	rabbitmqURL string           // URL for RabbitMQ connection
-	handler     TaskHandler      // Task handler function. Worker will call this function when it receives a task
-	queueName   string           // Name of the queue to be subscribed to
-	logger      *log.Logger      // Logger to write to
-	connection  *amqp.Connection // Connection to the RabbitMQ
-	channel     *amqp.Channel    // Channel to the RabbitMQ
+	rabbitmqURL string             // URL for RabbitMQ connection
+	handler     TaskHandler        // Task handler function. Worker will call this function when it receives a task
+	queueName   string             // Name of the queue to be subscribed to
+	logger      *zap.SugaredLogger // Logger to write to
+	connection  *amqp.Connection   // Connection to the RabbitMQ
+	channel     *amqp.Channel      // Channel to the RabbitMQ
 }
 
 // HandlerContext will be passed to the handler function on every call
 type HandlerContext struct {
-	Task    Task          // Task for processing
-	channel *amqp.Channel // Channel to which it is connected to
+	Task    Task               // Task for processing
+	Logger  *zap.SugaredLogger // Logger to write to
+	channel *amqp.Channel      // Channel to which it is connected to
 }
 
 // Task represents a task for processing
 type Task struct {
-	Payload string // Data for processing
+	Payload *string // Data for processing
 }
 
 // TaskHandler represents Worker handler for processing tasks
@@ -51,11 +53,11 @@ func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
 		false,
 		amqp.Publishing{
 			ContentType: "application/json",
-			Body:        []byte(task.Payload),
+			Body:        []byte(*task.Payload),
 		})
 
 	if err != nil {
-		log.Printf("Failed to send to another queue: %s", err.Error())
+		ctx.Logger.Errorf("Failed to send to queue `%s`: %s", queueName, err.Error())
 		return err
 	}
 	return nil
@@ -82,22 +84,24 @@ func (w *Worker) Run() <-chan struct{} {
 
 	var forever chan struct{}
 
-	w.logger.Println("Worker starting...")
+	w.logger.Infof("Worker starting...")
 	go func() {
 		for d := range receiving {
-			w.logger.Printf("Received message: %s", d.Body) // TODO move under debug level
-			err := w.handler(HandlerContext{Task: Task{string(d.Body)}, channel: w.channel})
+			w.logger.Info("Received message")
+			body := string(d.Body)
+			w.logger.Debug(body)
+			err := w.handler(HandlerContext{Task: Task{&body}, channel: w.channel, Logger: w.logger})
 			if err != nil {
-				w.logger.Printf("Error on processing the task: %s", err.Error())
+				w.logger.Warnf("Failed to process the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
 				if err != nil {
-					w.logger.Printf("Failed to reject: %s", err.Error())
+					w.logger.Errorf("Failed to reject: %s", err.Error())
 				}
 				continue
 			}
 			err = d.Ack(false)
 			if err != nil {
-				w.logger.Printf("Failed to send ACK: %s", err.Error())
+				w.logger.Errorf("Failed to send ACK: %s", err.Error())
 				return
 			}
 		}
@@ -111,29 +115,54 @@ func (w *Worker) Stop() {
 	if w.channel != nil {
 		err := w.channel.Close()
 		if err != nil {
-			w.logger.Printf("Failed to close the channel: %s", err.Error())
+			w.logger.Errorf("Failed to close the channel: %s", err.Error())
 		}
 	}
 	if w.connection != nil {
 		err := w.connection.Close()
 		if err != nil {
-			w.logger.Printf("Failed to close the connection: %s", err.Error())
+			w.logger.Errorf("Failed to close the connection: %s", err.Error())
 		}
 	}
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *log.Logger) *Worker {
+func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
-		logger: func() *log.Logger {
-			if logger != nil {
-				return logger
-			} else {
-				return log.Default()
-			}
-		}(),
-		queueName: queueName,
+		logger:      CreateDefaultLogger(zapcore.InfoLevel), // TODO read from config
+		queueName:   queueName,
 	}
+}
+
+// CreateDefaultLogger creates default logger with a certain log level
+func CreateDefaultLogger(level zapcore.Level) *zap.SugaredLogger {
+	cfg := zap.Config{
+		Encoding:         "console",
+		Development:      true,
+		Level:            zap.NewAtomicLevelAt(level),
+		OutputPaths:      []string{"stdout"},
+		ErrorOutputPaths: []string{"stderr"},
+		EncoderConfig: zapcore.EncoderConfig{
+			MessageKey:          "message",
+			LevelKey:            "level",
+			TimeKey:             "name",
+			NameKey:             "ts",
+			CallerKey:           "caller",
+			FunctionKey:         "func",
+			StacktraceKey:       "stacktrace",
+			SkipLineEnding:      false,
+			LineEnding:          "\n",
+			EncodeLevel:         zapcore.CapitalColorLevelEncoder,
+			EncodeTime:          zapcore.ISO8601TimeEncoder,
+			EncodeDuration:      zapcore.MillisDurationEncoder,
+			EncodeCaller:        zapcore.FullCallerEncoder,
+			EncodeName:          zapcore.FullNameEncoder,
+			NewReflectedEncoder: nil,
+			ConsoleSeparator:    "\t",
+		},
+	}
+	logger, _ := cfg.Build()
+	return logger.Sugar()
 }
