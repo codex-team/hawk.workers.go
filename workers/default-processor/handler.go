@@ -24,5 +24,5 @@ func Handler(ctx worker.HandlerContext) error {
 		return errors.New("no projectId or no payload.type fields")
 	}
 	ctx.Logger.Debug("Resending the task")
-	return ctx.SendTask(&ctx.Task, targetQueue)
+	return ctx.SendTask(&ctx, &ctx.Task, targetQueue)
 }

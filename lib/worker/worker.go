@@ -20,9 +20,10 @@ type Worker struct {
 
 // HandlerContext will be passed to the handler function on every call
 type HandlerContext struct {
-	Task    Task               // Task for processing
-	Logger  *zap.SugaredLogger // Logger to write to
-	channel *amqp.Channel      // Channel to which it is connected to
+	Task     Task                                                          // Task for processing
+	Logger   *zap.SugaredLogger                                            // Logger to write to
+	SendTask func(ctx *HandlerContext, task *Task, queueName string) error // Virtual function for resending the task
+	channel  *amqp.Channel                                                 // Channel to which it is connected to
 }
 
 // Task represents a task for processing
@@ -40,8 +41,8 @@ func (w *Worker) fatalOnFail(err error, msg string) {
 	}
 }
 
-// SendTask sends task to another queue, empty string is considered as no-op and nothing will be sent
-func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
+// sendTask sends task to another queue, empty string is considered as no-op and nothing will be sent
+func sendTask(ctx *HandlerContext, task *Task, queueName string) error {
 	if len(queueName) == 0 {
 		return nil // considered as is not intended to be resent
 	}
@@ -90,7 +91,7 @@ func (w *Worker) Run() <-chan struct{} {
 			w.logger.Info("Received message")
 			body := string(d.Body)
 			w.logger.Debug(body)
-			err := w.handler(HandlerContext{Task: Task{&body}, channel: w.channel, Logger: w.logger})
+			err := w.handler(HandlerContext{Task: Task{&body}, channel: w.channel, Logger: w.logger, SendTask: sendTask})
 			if err != nil {
 				w.logger.Warnf("Failed to process the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
