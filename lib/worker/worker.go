@@ -16,12 +16,14 @@ type Worker struct {
 	logger      *zap.SugaredLogger // Logger to write to
 	connection  *amqp.Connection   // Connection to the RabbitMQ
 	channel     *amqp.Channel      // Channel to the RabbitMQ
+	ctx         interface{}        // Context sent to handler
 }
 
 // HandlerContext will be passed to the handler function on every call
 type HandlerContext struct {
 	Task    Task               // Task for processing
 	Logger  *zap.SugaredLogger // Logger to write to
+	Context interface{}        // Context sent to handler
 	channel *amqp.Channel      // Channel to which it is connected to
 }
 
@@ -90,7 +92,7 @@ func (w *Worker) Run() <-chan struct{} {
 			w.logger.Info("Received message")
 			body := string(d.Body)
 			w.logger.Debug(body)
-			err := w.handler(HandlerContext{Task: Task{&body}, channel: w.channel, Logger: w.logger})
+			err := w.handler(HandlerContext{Task: Task{&body}, channel: w.channel, Logger: w.logger, Context: w.ctx})
 			if err != nil {
 				w.logger.Warnf("Failed to process the task: %s", err.Error())
 				err = d.Reject(false) // TODO think about this behavior
@@ -127,12 +129,13 @@ func (w *Worker) Stop() {
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
+func New(rabbitmqURL string, queueName string, handler TaskHandler, ctx interface{}) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
 		logger:      CreateDefaultLogger(zapcore.InfoLevel), // TODO read from config
 		queueName:   queueName,
+		ctx:         ctx,
 	}
 }
 

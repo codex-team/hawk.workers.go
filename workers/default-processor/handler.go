@@ -6,9 +6,12 @@ import (
 	"github.com/codex-team/hawk.workers.go/lib/worker"
 )
 
-const targetQueue string = "grouper"
+type DefaultContext struct {
+	targetQueue string // targetQueue is the name of the queue to send the result
+}
 
 func Handler(ctx worker.HandlerContext) error {
+	context := (ctx.Context).(*DefaultContext)
 	if ctx.Task.Payload == nil {
 		ctx.Logger.Error("Error in the context: Task.Payload is nil")
 		return errors.New("Task.Payload is nil")
@@ -24,5 +27,5 @@ func Handler(ctx worker.HandlerContext) error {
 		return errors.New("no projectId or no payload.type fields")
 	}
 	ctx.Logger.Debug("Resending the task")
-	return ctx.SendTask(&ctx.Task, targetQueue)
+	return ctx.SendTask(&ctx.Task, context.targetQueue)
 }
