@@ -1,4 +1,4 @@
-package worker
+package broker
 
 import (
 	"context"
@@ -7,26 +7,26 @@ import (
 
 type DeliveryChannel <-chan amqp.Delivery
 
-type BrokerPublisher interface {
+type Publisher interface {
 	Publish(queueName string, payload []byte) error
 }
 
 type Broker interface {
-	BrokerPublisher
+	Publisher
 	Connect() error
 	Subscribe(queueName string) (DeliveryChannel, error)
 	Close() error
 }
 
-type RabbitMQBroker struct {
-	rabbitmqURL string           // URL for RabbitMQ connection
+type RabbitMQ struct {
+	RabbitmqURL string           // URL for RabbitMQ connection
 	connection  *amqp.Connection // Connection to the RabbitMQ
 	channel     *amqp.Channel    // Channel to the RabbitMQ
 }
 
-func (b *RabbitMQBroker) Connect() error {
+func (b *RabbitMQ) Connect() error {
 	var err error
-	b.connection, err = amqp.Dial(b.rabbitmqURL)
+	b.connection, err = amqp.Dial(b.RabbitmqURL)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func (b *RabbitMQBroker) Connect() error {
 	return nil
 }
 
-func (b *RabbitMQBroker) Subscribe(queueName string) (DeliveryChannel, error) {
+func (b *RabbitMQ) Subscribe(queueName string) (DeliveryChannel, error) {
 	receiving, err := b.channel.Consume(
 		queueName, // queue
 		"",        // consumer
@@ -50,7 +50,7 @@ func (b *RabbitMQBroker) Subscribe(queueName string) (DeliveryChannel, error) {
 	return receiving, err
 }
 
-func (b *RabbitMQBroker) Publish(queueName string, payload []byte) error {
+func (b *RabbitMQ) Publish(queueName string, payload []byte) error {
 	err := b.channel.PublishWithContext(
 		context.TODO(),
 		"",
@@ -67,7 +67,7 @@ func (b *RabbitMQBroker) Publish(queueName string, payload []byte) error {
 	return nil
 }
 
-func (b *RabbitMQBroker) Close() error {
+func (b *RabbitMQ) Close() error {
 	if b.channel != nil {
 		err := b.channel.Close()
 		if err != nil {

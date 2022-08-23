@@ -2,6 +2,7 @@
 package worker
 
 import (
+	"github.com/codex-team/hawk.workers.go/lib/broker"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -12,7 +13,7 @@ type Worker struct {
 	handler     TaskHandler        // Task handler function. Worker will call this function when it receives a task
 	queueName   string             // Name of the queue to be subscribed to
 	logger      *zap.SugaredLogger // Logger to write to
-	broker      Broker             // Broker to receive and send messages to
+	broker      broker.Broker      // Broker to receive and send messages to
 }
 
 // Task represents a task for processing
@@ -79,13 +80,12 @@ func (w *Worker) Stop() {
 
 // New function creates new worker instance
 func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
-	broker := &RabbitMQBroker{rabbitmqURL: rabbitmqURL}
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
 		logger:      CreateDefaultLogger(zapcore.InfoLevel), // TODO read from config
 		queueName:   queueName,
-		broker:      broker,
+		broker:      &broker.RabbitMQ{RabbitmqURL: rabbitmqURL},
 	}
 }
 
