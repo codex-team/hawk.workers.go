@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"github.com/codex-team/hawk.workers.go/lib/broker"
 	"go.uber.org/zap"
 )
 
@@ -8,7 +9,7 @@ import (
 type HandlerContext struct {
 	Task   Task               // Task for processing
 	Logger *zap.SugaredLogger // Logger to write to
-	broker BrokerPublisher    // Channel to which it is connected to
+	broker broker.Publisher   // Channel to which it is connected to
 }
 
 // SendTask sends task to another queue, empty string is considered as no-op and nothing will be sent
