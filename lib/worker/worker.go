@@ -83,14 +83,19 @@ func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
-		logger:      CreateDefaultLogger(zapcore.InfoLevel), // TODO read from config
+		logger:      CreateDefaultLoggerWithLevel(zapcore.InfoLevel), // TODO read from config
 		queueName:   queueName,
 		broker:      &broker.RabbitMQ{RabbitmqURL: rabbitmqURL},
 	}
 }
 
-// CreateDefaultLogger creates default logger with a certain log level
-func CreateDefaultLogger(level zapcore.Level) *zap.SugaredLogger {
+// CreateDefaultLogger creates default logger
+func CreateDefaultLogger() *zap.SugaredLogger {
+	return CreateDefaultLoggerWithLevel(zapcore.InfoLevel)
+}
+
+// CreateDefaultLoggerWithLevel creates default logger with a certain log level
+func CreateDefaultLoggerWithLevel(level zapcore.Level) *zap.SugaredLogger {
 	cfg := zap.Config{
 		Encoding:         "console",
 		Development:      true,

@@ -25,3 +25,11 @@ func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
 	}
 	return nil
 }
+
+func CreateHandlerContext(task Task, logger *zap.SugaredLogger, broker broker.Publisher) HandlerContext {
+	return HandlerContext{
+		Task:   task,
+		Logger: logger,
+		broker: broker,
+	}
+}
