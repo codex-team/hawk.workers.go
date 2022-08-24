@@ -61,11 +61,11 @@ func (b *RabbitMQ) Subscribe(queueName string) (DeliveryChannel, error) {
 func (b *RabbitMQ) Publish(queueName string, payload []byte) error {
 	err := b.channel.PublishWithContext(
 		context.TODO(),
-		"",
-		queueName,
-		false,
-		false,
-		amqp.Publishing{
+		"",        // exchange name
+		queueName, // queue name
+		false,     // mandatory
+		false,     // immediate
+		amqp.Publishing{ // message to publish
 			ContentType: "application/json",
 			Body:        payload,
 		})
