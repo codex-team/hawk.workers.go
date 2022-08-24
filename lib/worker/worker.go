@@ -5,6 +5,7 @@ import (
 	"github.com/codex-team/hawk.workers.go/lib/broker"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"os"
 )
 
 // Worker represents worker data for handling tasks
@@ -92,6 +93,14 @@ func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
 // CreateDefaultLogger creates default logger
 func CreateDefaultLogger() *zap.SugaredLogger {
 	return CreateDefaultLoggerWithLevel(zapcore.InfoLevel)
+}
+
+// CreateTestLogger creates logger for testing purposes
+func CreateTestLogger() *zap.SugaredLogger {
+	cfg := zap.NewDevelopmentConfig()
+	cfg.OutputPaths = []string{os.DevNull}
+	logger, _ := cfg.Build()
+	return logger.Sugar()
 }
 
 // CreateDefaultLoggerWithLevel creates default logger with a certain log level
