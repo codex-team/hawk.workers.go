@@ -26,6 +26,7 @@ func (ctx *HandlerContext) SendTask(task *Task, queueName string) error {
 	return nil
 }
 
+// CreateHandlerContext creates new context for handler function
 func CreateHandlerContext(task Task, logger *zap.SugaredLogger, broker broker.Publisher) HandlerContext {
 	return HandlerContext{
 		Task:   task,
