@@ -1,6 +1,8 @@
 go 1.18
 
 use (
+	./lib/broker
 	./lib/worker
+	./mocks
 	./workers/default-processor
 )
