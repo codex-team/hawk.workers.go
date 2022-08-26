@@ -1,0 +1,4 @@
+registry_url: "amqp://127.0.0.1:5672"
+log_level: "info"
+queue: "errors/default"
+target_queue: "grouper"
