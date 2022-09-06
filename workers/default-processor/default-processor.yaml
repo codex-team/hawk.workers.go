@@ -1,2 +1,2 @@
-registry_url: "amqp://127.0.0.1:5672"
-log_level: "info"
+RegistryUrl: "amqp://127.0.0.1:5672"
+LogLevel: "info"

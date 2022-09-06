@@ -26,8 +26,8 @@ func main() {
 		viper.SetConfigType("yaml")
 		viper.AddConfigPath(".")
 	}
-	viper.SetDefault("registry_url", getEnv("REGISTRY_URL", "amqp://127.0.0.1:5672"))
-	viper.SetDefault("log_level", getEnv("LOG_LEVEL", "info"))
+	viper.SetDefault("RegistryUrl", getEnv("REGISTRY_URL", "amqp://127.0.0.1:5672"))
+	viper.SetDefault("LogLevel", getEnv("LOG_LEVEL", "info"))
 	var config worker.CommonConfig
 	if err := worker.ReadConfig(&config); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {

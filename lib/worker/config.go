@@ -11,8 +11,8 @@ import "github.com/spf13/viper"
 // "panic", "PANIC"
 // "fatal", "FATAL"
 type CommonConfig struct {
-	RegistryUrl string `mapstructure:"registry_url"` // URL to the RabbitMQ, for example "amqp://127.0.0.1:5672"
-	LogLevel    string `mapstructure:"log_level"`    // Log level applied
+	RegistryUrl string // URL to the RabbitMQ, for example "amqp://127.0.0.1:5672"
+	LogLevel    string // Log level applied
 }
 
 // ReadConfig reads config to the receiver, needs viper to be configured with paths and defaults
