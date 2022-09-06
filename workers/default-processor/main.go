@@ -28,16 +28,13 @@ func main() {
 	}
 	viper.SetDefault("registry_url", getEnv("REGISTRY_URL", "amqp://127.0.0.1:5672"))
 	viper.SetDefault("log_level", getEnv("LOG_LEVEL", "info"))
-	var config worker.MainConfig
-	if err := viper.ReadInConfig(); err != nil {
+	var config worker.CommonConfig
+	if err := worker.ReadConfig(&config); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			fmt.Println("Config was not found, using default values")
 		} else {
-			panic(fmt.Sprint("Failed to read the config: ", err.Error()))
+			panic(err.Error())
 		}
-	}
-	if err := viper.Unmarshal(&config); err != nil {
-		panic(fmt.Sprint("Failed to read the config: ", err.Error()))
 	}
 
 	logLevel, _ := zapcore.ParseLevel(config.LogLevel)
