@@ -16,6 +16,9 @@ func main() {
 	rabbitmqUrl := getEnv("REGISTRY_URL", "amqp://127.0.0.1:5672")
 	queue := "errors/default"
 
+	// todo: read config
+	// todo: setup connection to MongoDB database
+
 	handler := CreateHandler(GrouperDeps{"eventsDb", "redis"}) // init db connection and pass it to handler
 
 	workerInstance := worker.New(rabbitmqUrl, queue, handler)
