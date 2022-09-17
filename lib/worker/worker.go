@@ -80,11 +80,14 @@ func (w *Worker) Stop() {
 }
 
 // New function creates new worker instance
-func New(rabbitmqURL string, queueName string, handler TaskHandler) *Worker {
+func New(rabbitmqURL string, queueName string, handler TaskHandler, logger *zap.SugaredLogger) *Worker {
+	if logger == nil {
+		logger = CreateDefaultLogger()
+	}
 	return &Worker{
 		rabbitmqURL: rabbitmqURL,
 		handler:     handler,
-		logger:      CreateDefaultLoggerWithLevel(zapcore.InfoLevel), // TODO read from config
+		logger:      logger,
 		queueName:   queueName,
 		broker:      &broker.RabbitMQ{RabbitmqURL: rabbitmqURL},
 	}

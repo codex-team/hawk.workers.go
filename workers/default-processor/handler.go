@@ -6,8 +6,6 @@ import (
 	"github.com/codex-team/hawk.workers.go/lib/worker"
 )
 
-const targetQueue string = "grouper"
-
 func Handler(ctx worker.HandlerContext) error {
 	if ctx.Task.Payload == nil {
 		ctx.Logger.Error("Error in the context: Task.Payload is nil")
